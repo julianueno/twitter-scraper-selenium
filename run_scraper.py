@@ -7,8 +7,5 @@ scrape_profile(
     tweets_count=500,
     filename="NemoAnno",
     directory="/Applications/MAMP/htdocs/twitter-scraper-selenium/scraped",
-    headless=False,
-    scroll_down_attempts=20,
-    wait_between_scrolls=3
-    )
+    headless=False)
 
