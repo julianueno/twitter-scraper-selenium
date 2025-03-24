@@ -18,43 +18,95 @@ logger.addHandler(ch)
 
 class Utilities:
     """
-    this class contains all the method related to driver behaviour,
-    like scrolling, waiting for element to appear, it contains all static
-    method, which accepts driver instance as a argument
-
-    @staticmethod
-    def method_name(parameters):
+    Enhanced utilities for more reliable Twitter scraping
     """
 
     @staticmethod
-    def wait_until_tweets_appear(driver) -> None:
-        """Wait for tweet to appear. Helpful to work with the system facing
-        slow internet connection issues
-        """
+    def wait_until_tweets_appear(driver, timeout=30) -> None:
+        """Wait for tweets to appear with longer timeout and multiple selectors"""
         try:
-            WebDriverWait(driver, 10).until(EC.presence_of_element_located(
-                (By.CSS_SELECTOR, '[data-testid="tweet"]')))
+            # Try multiple selectors as Twitter changes them frequently
+            selectors = [
+                '[data-testid="tweet"]',  # Modern Twitter
+                'article[role="article"]',  # Alternative selector
+                'div[data-testid="tweetText"]'  # Tweet text container
+            ]
+            
+            for selector in selectors:
+                try:
+                    WebDriverWait(driver, timeout).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+                    return
+                except:
+                    continue
+            
+            raise WebDriverException("No tweets found using any selector")
+            
         except WebDriverException:
-            logger.exception(
-                "Tweets did not appear!, Try setting headless=False to see what is happening")
+            logger.exception("Tweets did not appear after %s seconds", timeout)
 
     @staticmethod
-    def scroll_down(driver) -> None:
-        """Helps to scroll down web page"""
-        try:
-            body = driver.find_element(By.CSS_SELECTOR, 'body')
-            for _ in range(randint(1, 3)):
-                body.send_keys(Keys.PAGE_DOWN)
-        except Exception as ex:
-            logger.exception("Error at scroll_down method {}".format(ex))
+    def scroll_down(driver, scroll_pause_time=2, scroll_attempts=10) -> None:
+        """Enhanced scrolling that actually reaches the bottom of the page"""
+        last_height = driver.execute_script("return document.body.scrollHeight")
+        attempts = 0
+        
+        while attempts < scroll_attempts:
+            # Scroll down to bottom
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            
+            # Wait to load page
+            time.sleep(scroll_pause_time)
+            
+            # Calculate new scroll height and compare with last scroll height
+            new_height = driver.execute_script("return document.body.scrollHeight")
+            if new_height == last_height:
+                # If heights are the same, try the alternate scroll method
+                try:
+                    body = driver.find_element(By.CSS_SELECTOR, 'body')
+                    body.send_keys(Keys.PAGE_DOWN)
+                    time.sleep(1)
+                except:
+                    break
+                    
+            last_height = new_height
+            attempts += 1
 
     @staticmethod
-    def wait_until_completion(driver) -> None:
-        """waits until the page have completed loading"""
+    def wait_until_completion(driver, max_wait=30) -> None:
+        """More robust page load detection"""
         try:
-            state = ""
-            while state != "complete":
-                time.sleep(randint(3, 5))
+            start_time = time.time()
+            while True:
                 state = driver.execute_script("return document.readyState")
+                if state == "complete":
+                    return
+                if time.time() - start_time > max_wait:
+                    raise TimeoutError("Page didn't load within timeout")
+                time.sleep(1)
         except Exception as ex:
-            logger.exception('Error at wait_until_completion: {}'.format(ex))
+            logger.exception('Page load error: %s', ex)
+
+    @staticmethod
+    def close_popups(driver):
+        """Close any popups that might obstruct scraping"""
+        try:
+            # Cookie consent popup
+            driver.find_element(By.XPATH, 
+                '//div[@role="dialog"]//span[contains(text(), "Accept")]').click()
+            time.sleep(1)
+        except:
+            pass
+
+    @staticmethod
+    def get_visible_tweets(driver):
+        """Returns currently visible tweet elements"""
+        selectors = [
+            '[data-testid="tweet"]',
+            'article[role="article"]'
+        ]
+        for selector in selectors:
+            tweets = driver.find_elements(By.CSS_SELECTOR, selector)
+            if tweets:
+                return tweets
+        return []
